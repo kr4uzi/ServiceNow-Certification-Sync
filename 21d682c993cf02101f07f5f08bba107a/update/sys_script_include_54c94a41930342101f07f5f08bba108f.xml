@@ -137,12 +137,20 @@ CertSyncUtil.prototype = {
 					const certs = [];
 					if (userData.certsList && userData.certsList.length) {
 						userData.certsList.forEach(c => {
-							const gdt = new GlideDateTime();
-							gdt.setDisplayValue(c.certDate, 'MMMM dd, yyyy');
+							let date = '';
+							if (c.certDate) {
+								try {
+									const gdt = new GlideDateTime();
+									gdt.setDisplayValue(c.certDate, 'MMMM dd, yyyy');
+									date = gdt.getDate().toString();
+								} catch (e) {
+
+								}
+							}
 
 							certs.push({
 								name: c.certName,
-								date: gdt.getDate().toString()
+								date: date
 							});
 						});
 					}
@@ -169,13 +177,13 @@ CertSyncUtil.prototype = {
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-06-25 20:12:07</sys_created_on>
         <sys_id>54c94a41930342101f07f5f08bba108f</sys_id>
-        <sys_mod_count>11</sys_mod_count>
+        <sys_mod_count>14</sys_mod_count>
         <sys_name>CertSyncUtil</sys_name>
         <sys_package display_value="Cert Sync" source="x_424426_cert_sync">21d682c993cf02101f07f5f08bba107a</sys_package>
-        <sys_policy>read</sys_policy>
+        <sys_policy/>
         <sys_scope display_value="Cert Sync">21d682c993cf02101f07f5f08bba107a</sys_scope>
         <sys_update_name>sys_script_include_54c94a41930342101f07f5f08bba108f</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-25 21:45:43</sys_updated_on>
+        <sys_updated_on>2024-06-25 22:03:20</sys_updated_on>
     </sys_script_include>
 </record_update>

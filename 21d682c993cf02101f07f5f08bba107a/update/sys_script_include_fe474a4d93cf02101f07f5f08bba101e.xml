@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>package_private</access>
+        <active>true</active>
+        <api_name>x_424426_cert_sync.SkillsExt</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description>Implements extension point x_424426_cert_sync.SkillsExt</description>
+        <name>SkillsExt</name>
+        <script><![CDATA[/* global Class, gs, GlideRecord, GlideScopedEvaluator */
+/* eslint no-undef: "error" */
+var SkillsExt = Class.create();
+SkillsExt.prototype = {
+	initialize: function() {
+		const scriptGr = new GlideRecord('sys_rte_eb_script_operation');
+		scriptGr.addQuery('sys_id', 'db97c201930342101f07f5f08bba1002');
+		scriptGr.setLimit(1);
+		scriptGr.query();
+		if (scriptGr.next()) {
+			this.scriptGr = scriptGr;
+		} else {
+			throw new Error('Failed to initialize SkillsExt');
+		}
+	},
+
+    addUserSkill: function (userSysID, skillSysID) {
+		this.scriptGr.sys_scope = 'global';
+		this.scriptGr.script = `
+			(function () {
+				var userSkillGr = new GlideRecord('sys_user_has_skill');
+				userSkillGr.newRecord();
+				userSkillGr.user = userSysID;
+				userSkillGr.skill = skillSysID;
+				return userSkillGr.insert();
+			})();`
+		; 
+		
+		const gse = GlideScopedEvaluator();
+		return gse.evaluateScript(this.scriptGr, 'script', {
+			userSysID: userSysID,
+			skillSysID: skillSysID
+		});
+	},
+
+	createSkill: function (skillName) {
+		this.scriptGr.sys_scope = 'global';
+		this.scriptGr.script = `
+			(function () {
+				var skillGr = new GlideRecord('cmn_skill');
+				skillGr.newRecord();
+				skillGr.sys_scope = 'global';
+				skillGr.name = skillName;
+				return skillGr.insert();
+			})();`
+		; 
+		
+		const gse = GlideScopedEvaluator();
+		return gse.evaluateScript(this.scriptGr, 'script', {
+			skillName: skillName
+		});
+	},
+
+    type: 'SkillsExt'
+};]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>markus.kraus</sys_created_by>
+        <sys_created_on>2024-06-25 20:01:05</sys_created_on>
+        <sys_id>fe474a4d93cf02101f07f5f08bba101e</sys_id>
+        <sys_mod_count>9</sys_mod_count>
+        <sys_name>SkillsExt</sys_name>
+        <sys_package display_value="Cert Sync" source="x_424426_cert_sync">21d682c993cf02101f07f5f08bba107a</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Cert Sync">21d682c993cf02101f07f5f08bba107a</sys_scope>
+        <sys_update_name>sys_script_include_fe474a4d93cf02101f07f5f08bba101e</sys_update_name>
+        <sys_updated_by>markus.kraus</sys_updated_by>
+        <sys_updated_on>2024-06-25 21:43:54</sys_updated_on>
+    </sys_script_include>
+</record_update>

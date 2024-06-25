@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>package_private</access>
+        <active>true</active>
+        <api_name>x_424426_cert_sync.CertSyncUtil</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description/>
+        <name>CertSyncUtil</name>
+        <script><![CDATA[var CertSyncUtil = Class.create();
+CertSyncUtil.prototype = {
+    initialize: function() {
+		const initResult = this._partnerPortalInit();
+		if (initResult.status == 'success') {
+			this.cookie = initResult.cookie;
+			this.sessionID = initResult.sessionID;
+		} else {
+			throw new Error(initResult.message);
+		}
+    },
+
+	_partnerPortalInit: function () {
+		const result = {
+			status: 'error',
+			message: ''
+		};
+
+		const ws = new sn_ws.RESTMessageV2();
+		ws.setHttpMethod('get');
+		ws.setEndpoint('https://partnerportal.service-now.com/login.do');
+		const resp = ws.execute();
+		if (resp.getStatusCode() == 200) {
+			const cookies = [];
+			resp.getAllHeaders().filter(header => header.name == 'Set-Cookie').forEach(header => {
+				cookies.push(header.value.substring(0, header.value.indexOf(';')));
+			});
+
+			const tokenMatch = resp.getBody().match(/var g_ck = '(.*?)';/);
+			if (tokenMatch) {
+				result.cookie = cookies.join(';');
+				result.sessionID = tokenMatch[1];
+				result.status = 'success';
+			} else {
+				result.message = 'Failed to generate Session';
+			}
+		} else {
+			result.message = 'Failed to access Partner Portal';
+		}
+
+		return result;
+	},
+
+	importCerts: function () {
+		const groupSysID = gs.getProperty('x_424426_cert_sync.group');
+		if (!groupSysID) {
+			return;
+		}
+
+		const extensionPoints = new GlideScriptedExtensionPoint().getExtensions('SkillsExt');
+		let ext = extensionPoints.length && extensionPoints[0];
+		if (ext) {
+			ext.initialize();
+		} else {
+			return;
+		}
+
+		const userGr = new GlideRecord('sys_user_grmember');
+		userGr.addQuery('group', groupSysID);
+		userGr.addQuery('user.active', true);
+		userGr.addNotNullQuery('user.email');
+		userGr.query();
+		while (userGr.next()) {
+			const res = this.getCerts(userGr.user.email);
+			if (res.status == 'error') {
+				break;
+			}
+
+			if (res.status == 'success') {
+				res.certs.forEach(cert => {
+					const skillSysID = getSkillSysID(cert.name);
+					if (!skillSysID) {
+						return;
+					}
+					
+					const userSkillGr = new GlideRecord('sys_user_has_skill');
+					userSkillGr.addQuery('user', userGr.user);
+					userSkillGr.addQuery('skill', skillSysID);
+					userSkillGr.setLimit(1);
+					userSkillGr.query();
+					if (!userSkillGr.hasNext()) {
+						ext.addUserSkill(userGr.user, skillSysID);
+					}
+				});
+			}
+		}
+
+		function getSkillSysID(skillName) {
+			const skillGr = new GlideRecord('cmn_skill');
+			skillGr.addQuery('name', skillName);
+			skillGr.setLimit(1);
+			skillGr.query();
+			if (skillGr.next()) {
+				if (skillGr.active) {
+					return skillGr.getUniqueValue();
+				}
+			} else {
+				return ext.createSkill(skillName);
+			}
+		}
+	},
+
+	getCerts: function (userMail) {
+		const result = {
+			status: 'error',
+			message: ''
+		};
+
+		const ws = new sn_ws.RESTMessageV2();
+		ws.setHttpMethod('post');
+		ws.setEndpoint('https://partnerportal.service-now.com/xmlhttp.do');
+		ws.setRequestHeader('Accept', 'application/xml');
+		ws.setRequestHeader('Cookie', this.cookie);
+		ws.setRequestHeader('X-Usertoken', this.sessionID);
+		ws.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+		ws.setRequestBody('sysparm_processor=MappedCertifications&sysparm_name=viewMappedCerts&sysparm_user_input=' + encodeURIComponent(userMail));
+		const resp = ws.execute();
+		if (resp.getStatusCode() == 200) {
+			const respBody = resp.getBody();
+			if (respBody) {
+				const xmlDoc = new XMLDocument2();
+				xmlDoc.parseXML(respBody);
+				const response = JSON.parse(xmlDoc.getNode('//xml').getAttribute('answer'));
+				if (response.usersList && response.usersList.length) {
+					const userData = response.usersList[0];
+					// userData also contains: name, city, state, country
+				
+					const certs = [];
+					if (userData.certsList && userData.certsList.length) {
+						userData.certsList.forEach(c => {
+							const gdt = new GlideDateTime();
+							gdt.setDisplayValue(c.certDate, 'MMMM dd, yyyy');
+
+							certs.push({
+								name: c.certName,
+								date: gdt.getDate().toString()
+							});
+						});
+					}
+
+					result.certs = certs;
+					result.status = 'success';
+				} else {
+					result.message = 'No User found for given mail';
+					result.status = 'no_user';
+				}
+			} else {
+				result.message = 'Empty response';
+			}
+		} else {
+			result.message = 'Failed to access Partner Portal';
+		}
+
+		return result;
+	},
+
+    type: 'CertSyncUtil'
+};]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>markus.kraus</sys_created_by>
+        <sys_created_on>2024-06-25 20:12:07</sys_created_on>
+        <sys_id>54c94a41930342101f07f5f08bba108f</sys_id>
+        <sys_mod_count>11</sys_mod_count>
+        <sys_name>CertSyncUtil</sys_name>
+        <sys_package display_value="Cert Sync" source="x_424426_cert_sync">21d682c993cf02101f07f5f08bba107a</sys_package>
+        <sys_policy>read</sys_policy>
+        <sys_scope display_value="Cert Sync">21d682c993cf02101f07f5f08bba107a</sys_scope>
+        <sys_update_name>sys_script_include_54c94a41930342101f07f5f08bba108f</sys_update_name>
+        <sys_updated_by>markus.kraus</sys_updated_by>
+        <sys_updated_on>2024-06-25 21:45:43</sys_updated_on>
+    </sys_script_include>
+</record_update>

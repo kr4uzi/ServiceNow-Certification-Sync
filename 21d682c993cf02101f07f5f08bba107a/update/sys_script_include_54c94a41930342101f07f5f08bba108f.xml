@@ -6,8 +6,13 @@
         <caller_access/>
         <client_callable>false</client_callable>
         <description/>
+        <mobile_callable>false</mobile_callable>
         <name>CertSyncUtil</name>
-        <script><![CDATA[var CertSyncUtil = Class.create();
+        <sandbox_callable>false</sandbox_callable>
+        <script><![CDATA[/* global gs, sn_ws */
+/* global Class, GlideRecord, GlideDateTime, XMLDocument2, GlideScriptedExtensionPoint */
+/* eslint no-undef: "error" */
+var CertSyncUtil = Class.create();
 CertSyncUtil.prototype = {
     initialize: function() {
 		const initResult = this._partnerPortalInit();
@@ -51,35 +56,80 @@ CertSyncUtil.prototype = {
 	},
 
 	importCerts: function () {
-		const groupSysID = gs.getProperty('x_424426_cert_sync.group');
-		if (!groupSysID) {
-			return;
+		const groupGr = (() => {
+			const groupGr = new GlideRecord('sys_user_group');
+
+			const groupNameOrSysID = (gs.getProperty('x_424426_cert_sync.group') || '').trim();
+			if (!groupNameOrSysID) {
+				return groupGr;
+			}
+
+			groupGr.addQuery('sys_id', groupNameOrSysID)
+				.addOrCondition('name', groupNameOrSysID);
+			groupGr.setLimit(1);
+			groupGr.query();
+			groupGr.next();
+			return groupGr;
+		})();
+
+		if (!groupGr.isValidRecord()) {
+			return {
+				status: 'skipped',
+				message: 'No or invalid group for import configured (x_424426_cert_sync.group)'
+			};
 		}
+
+		const result = {
+			status: 'error',
+			message: '',
+			skills_created: 0,
+			user_skills_created: 0
+		};
 
 		const extensionPoints = new GlideScriptedExtensionPoint().getExtensions('SkillsExt');
-		let ext = extensionPoints.length && extensionPoints[0];
-		if (ext) {
-			ext.initialize();
-		} else {
-			return;
+		if (!extensionPoints?.length) {
+			result.message = 'Implementation of Extension Point "SkillsExt" is required';
+			return result;
 		}
 
+		let ext = extensionPoints[0];
+		ext.initialize();
+
 		const userGr = new GlideRecord('sys_user_grmember');
-		userGr.addQuery('group', groupSysID);
+		userGr.addQuery('group', groupGr.sys_id);
 		userGr.addQuery('user.active', true);
 		userGr.addNotNullQuery('user.email');
+		userGr.orderByDesc('user.sys_updated_on');
 		userGr.query();
 		while (userGr.next()) {
 			const res = this.getCerts(userGr.user.email);
-			if (res.status == 'error') {
-				break;
+			if (res.status != 'success') {
+				res.message = 'Failed to retrieve certs for user: ' + userGr.user.email;
+				return res;
 			}
 
 			if (res.status == 'success') {
 				res.certs.forEach(cert => {
-					const skillSysID = getSkillSysID(cert.name);
+					let skillSysID = '';
+					const skillName = cert.name;
+					const skillGr = new GlideRecord('cmn_skill');
+					skillGr.addQuery('name', skillName);
+					skillGr.setLimit(1);
+					skillGr.query();
+					if (skillGr.next()) {
+						if (skillGr.active) {
+							skillSysID = skillGr.getUniqueValue();
+						}
+					} else {
+						skillSysID = ext.createSkill(skillName);
+						if (skillSysID) {
+							result.skills_created++;
+						}
+					}
+
 					if (!skillSysID) {
-						return;
+						result.message = 'Failed to create skill';
+						return result;
 					}
 					
 					const userSkillGr = new GlideRecord('sys_user_has_skill');
@@ -89,24 +139,14 @@ CertSyncUtil.prototype = {
 					userSkillGr.query();
 					if (!userSkillGr.hasNext()) {
 						ext.addUserSkill(userGr.user, skillSysID);
+						result.user_skills_created++;
 					}
 				});
 			}
 		}
 
-		function getSkillSysID(skillName) {
-			const skillGr = new GlideRecord('cmn_skill');
-			skillGr.addQuery('name', skillName);
-			skillGr.setLimit(1);
-			skillGr.query();
-			if (skillGr.next()) {
-				if (skillGr.active) {
-					return skillGr.getUniqueValue();
-				}
-			} else {
-				return ext.createSkill(skillName);
-			}
-		}
+		result.status = 'success';
+		return result;
 	},
 
 	getCerts: function (userMail) {
@@ -124,51 +164,57 @@ CertSyncUtil.prototype = {
 		ws.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
 		ws.setRequestBody('sysparm_processor=MappedCertifications&sysparm_name=viewMappedCerts&sysparm_user_input=' + encodeURIComponent(userMail));
 		const resp = ws.execute();
-		if (resp.getStatusCode() == 200) {
-			const respBody = resp.getBody();
-			if (respBody) {
-				const xmlDoc = new XMLDocument2();
-				xmlDoc.parseXML(respBody);
-				const response = JSON.parse(xmlDoc.getNode('//xml').getAttribute('answer'));
-				if (response.usersList && response.usersList.length) {
-					const userData = response.usersList[0];
-					// userData also contains: name, city, state, country
-				
-					const certs = [];
-					if (userData.certsList && userData.certsList.length) {
-						userData.certsList.forEach(c => {
-							let date = '';
-							if (c.certDate) {
-								try {
-									const gdt = new GlideDateTime();
-									gdt.setDisplayValue(c.certDate, 'MMMM dd, yyyy');
-									date = gdt.getDate().toString();
-								} catch (e) {
+		if (resp.haveError()) {
+			result.message = resp.getErrorMessage();
+			return result;
+		}
+		
+		const respBody = resp.getBody();
+		if (!respBody) {
+			result.message = 'Empty response from Partner Portal';
+			return result;
+		}
+		
+		const xmlDoc = new XMLDocument2();
+		xmlDoc.parseXML(respBody);
 
-								}
-							}
-
-							certs.push({
-								name: c.certName,
-								date: date
-							});
-						});
-					}
-
-					result.certs = certs;
-					result.status = 'success';
-				} else {
-					result.message = 'No User found for given mail';
-					result.status = 'no_user';
-				}
-			} else {
-				result.message = 'Empty response';
-			}
-		} else {
-			result.message = 'Failed to access Partner Portal';
+		// in this case getAttribute returns an empty string if 'answer' does not exist in the 'xml'-node
+		const response = JSON.parse(xmlDoc.getNode('//xml').getAttribute('answer') || null);
+		if (!response?.usersList?.length) {
+			return {
+				status: 'no_user',
+				message: 'No user found for mail: ' + userMail
+			};
 		}
 
-		return result;
+		const userData = response.usersList[0];
+		// userData also contains: name, city, state, country
+	
+		const certs = [];
+		if (userData.certsList && userData.certsList.length) {
+			userData.certsList.forEach(c => {
+				let date = '';
+				if (c.certDate) {
+					try {
+						const gdt = new GlideDateTime();
+						gdt.setDisplayValue(c.certDate, 'MMMM dd, yyyy');
+						date = gdt.getDate().toString();
+					} catch (e) {
+
+					}
+				}
+
+				certs.push({
+					name: c.certName,
+					date: date
+				});
+			});
+		}
+
+		return {
+			status: 'success',
+			certs: certs
+		};
 	},
 
     type: 'CertSyncUtil'
@@ -177,13 +223,13 @@ CertSyncUtil.prototype = {
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-06-25 20:12:07</sys_created_on>
         <sys_id>54c94a41930342101f07f5f08bba108f</sys_id>
-        <sys_mod_count>14</sys_mod_count>
+        <sys_mod_count>21</sys_mod_count>
         <sys_name>CertSyncUtil</sys_name>
         <sys_package display_value="Cert Sync" source="x_424426_cert_sync">21d682c993cf02101f07f5f08bba107a</sys_package>
         <sys_policy/>
         <sys_scope display_value="Cert Sync">21d682c993cf02101f07f5f08bba107a</sys_scope>
         <sys_update_name>sys_script_include_54c94a41930342101f07f5f08bba108f</sys_update_name>
-        <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-25 22:03:20</sys_updated_on>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2025-07-11 15:09:21</sys_updated_on>
     </sys_script_include>
 </record_update>

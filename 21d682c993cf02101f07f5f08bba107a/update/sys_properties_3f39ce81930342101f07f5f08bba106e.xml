@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?><record_update table="sys_properties">
     <sys_properties action="INSERT_OR_UPDATE">
         <choices/>
-        <description>The SysID of the User Group which is used to determine the Users for which Certifications shall be imported via the Partner Portal</description>
+        <description>The Name or the SysID of the User Group which is used to determine the Users for which Certifications shall be imported via the Partner Portal</description>
         <ignore_cache>true</ignore_cache>
         <is_private>false</is_private>
         <name>x_424426_cert_sync.group</name>
@@ -11,16 +11,16 @@
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-06-25 20:11:20</sys_created_on>
         <sys_id>3f39ce81930342101f07f5f08bba106e</sys_id>
-        <sys_mod_count>3</sys_mod_count>
+        <sys_mod_count>7</sys_mod_count>
         <sys_name>x_424426_cert_sync.group</sys_name>
         <sys_package display_value="Cert Sync" source="x_424426_cert_sync">21d682c993cf02101f07f5f08bba107a</sys_package>
         <sys_policy/>
         <sys_scope display_value="Cert Sync">21d682c993cf02101f07f5f08bba107a</sys_scope>
         <sys_update_name>sys_properties_3f39ce81930342101f07f5f08bba106e</sys_update_name>
-        <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-25 21:46:20</sys_updated_on>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2025-07-11 15:12:24</sys_updated_on>
         <type>string</type>
-        <value/>
+        <value>ServiceNow Certification Import</value>
         <write_roles/>
     </sys_properties>
     <sys_translated_text action="delete_multiple" query="documentkey=3f39ce81930342101f07f5f08bba106e"/>

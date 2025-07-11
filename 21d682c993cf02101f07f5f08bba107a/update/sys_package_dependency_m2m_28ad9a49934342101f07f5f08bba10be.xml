@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?><record_update table="sys_package_dependency_m2m">
     <sys_package_dependency_m2m action="INSERT_OR_UPDATE">
-        <dependency display_value="Skills Management" source="com.snc.skills_management">e9cf358593cb02101f07f5f08bba105a</dependency>
+        <dependency display_value="Skills Management" source="com.snc.skills_management">2880b627c36ae210de14d8477d013103</dependency>
         <min_version>1.0.0</min_version>
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-06-25 21:38:41</sys_created_on>
